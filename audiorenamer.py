@@ -8,6 +8,12 @@ from PIL import Image
 from mutagen.flac import FLAC
 from mutagen.mp3 import MP3
 import mutagen.id3 as id3
+import spotipy
+from secrets import secrets
+
+spotifyID = secrets.clientID
+spotifySecret = secrets.clientSecret
+
 
 
 # Compile regex to remove invalid filename characters for windows
