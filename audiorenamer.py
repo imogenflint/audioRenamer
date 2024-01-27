@@ -236,7 +236,8 @@ def process_album_art(artist: str, album: str, album_dir: str):
             print("Saved new artwork to " + album_dir)
 
         else:
-            print(artist + " - " + album + " could not be found on spotify, find artwork manually")
+            print(artist + " - " + album + "could not be found on spotify, check artist/album name or find artwork "
+                                           "manually")
 
 
 # Create a parser to take arguments
@@ -244,9 +245,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('directory', help='the directory to process')
 parser.add_argument('-v', '--verbose', action='store_true', help='if set, increase output verbosity')
 parser.add_argument('-d', '--delete_auth', action='store_true', help='if set, automatically delete unwanted'
-                                                                         ' files without prompt')
+                                                                     ' files without prompt')
 parser.add_argument('-s', '--enable_spotify', action='store_true', help='if set, use spotifys api to '
-                                                                            'download album art')
+                                                                        'download album art')
 
 # Assign arguments to values
 args = parser.parse_args()
@@ -259,7 +260,7 @@ if verbose:
     print(args)
 
 if enable_spotify:
-    # Create spotipy credentials structs (needs SPOTIPY_CLIENT_ID & SPOTIPY_CLIENT_SECRET env variables to be set)
+    # Create spotipy credentials structs (needs SPOTIPY_CLIENT_ID & SPOTIPY_CLIENT_SECRET to be set in secrets.py)
     auth_manager = SpotifyClientCredentials(secrets.get('SPOTIPY_CLIENT_ID'), secrets.get('SPOTIPY_CLIENT_SECRET'))
     sp = spotipy.Spotify(auth_manager=auth_manager)
 
