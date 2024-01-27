@@ -1,20 +1,19 @@
 import argparse
 import os
-import shutil
 import re
+import shutil
 from dataclasses import dataclass
+import urllib.request as request
+
+from secrets import secrets
+
 import mutagen
+import mutagen.id3 as id3
+import spotipy
 from PIL import Image
 from mutagen.flac import FLAC
 from mutagen.mp3 import MP3
-import mutagen.id3 as id3
-import spotipy
-from secrets import secrets
-
-spotifyID = secrets.clientID
-spotifySecret = secrets.clientSecret
-
-
+from spotipy.oauth2 import SpotifyClientCredentials
 
 # Compile regex to remove invalid filename characters for windows
 invalid_chars = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
@@ -43,7 +42,7 @@ def get_tags(album_dir: str):
     album = None
 
     if verbose:
-        print("Processing: " + album_dir)
+        print("\nProcessing: " + album_dir)
 
     # Iterate over a directory
     for filename in os.listdir(album_dir):
@@ -86,21 +85,8 @@ def get_tags(album_dir: str):
                                                       album_dir=album_dir)
             process_metadata(track_data)
 
-        # TODO: Add spotify developer integration using spotipy to download album art
-
-        elif filepath.lower().endswith("cover.jpg") or filepath.lower().endswith("folder.jpg"):
-
-            if not filepath.endswith("cover.jpg"):
-                file_end = str(filepath.split("\\")[-1])
-
-                new_filepath = filepath.replace(file_end, "cover.jpg")
-                os.rename(filepath, new_filepath)
-                filepath = new_filepath
-
-            with Image.open(filepath) as img:
-                width, height = img.size
-                if width != 400 | height != 400:
-                    print("Incorrect cover size at: " + filepath)
+        elif filepath.endswith("cover.jpg"):
+            pass
 
         else:
             # Remove anything that isn't audio or cover.jpg
@@ -112,7 +98,9 @@ def get_tags(album_dir: str):
 
     # Finally move the album folder to be correctly named
     # N.B. Album/artist data should be identical, so any track's metadata works
-    rename_dir(album_dir, artist, album)
+    album_dir = rename_dir(album_dir, artist, album)
+
+    process_album_art(artist, album, album_dir)
 
 
 def flatten_dir(parent_dir: str, source_dir: str):
@@ -202,21 +190,78 @@ def rename_dir(album_dir: str, album_artist: str, album_title: str):
         os.rename(album_dir, new_dir)
         print("Moved " + album_dir + " to " + new_dir)
 
+    return new_dir
+
+
+def process_album_art(artist: str, album: str, album_dir: str):
+    valid_art = False
+    cover_path = album_dir + "\\cover.jpg"
+
+    # If cover.jpg exists, check that it is the correct size
+    if os.path.isfile(cover_path):
+        with Image.open(cover_path) as img:
+            width, height = img.size
+            if width == 400 and height == 400:
+                valid_art = True
+            else:
+                print("Incorrect cover size at: " + album_dir)
+
+    if not valid_art and enable_spotify:
+        # Assemble a valid query for spotify
+        search_string = "album:" + album + " artist:" + artist
+        search_string.replace(' ', "%20")
+
+        # Query spotify and get the highest res. image url
+        query_dict = sp.search(search_string, 1, 0, "album")
+
+        # Ensure at least one album is found
+        if query_dict['albums']['total'] > 0:
+
+            image_url = query_dict['albums']['items'][0]['images'][0]['url']
+
+            # Save image to disk
+            request.urlretrieve(image_url, cover_path)
+
+            # Crop and resize image to 400x400
+            image = Image.open(cover_path)
+
+            if image.width != image.height:
+                crop_to = min(image.width, image.height)
+
+                image = image.crop((0, 0, crop_to, crop_to,))
+
+            image.thumbnail((400, 400))
+            image.save(cover_path)
+
+            print("Saved new artwork to " + album_dir)
+
+        else:
+            print(artist + " - " + album + " could not be found on spotify, find artwork manually")
+
 
 # Create a parser to take arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('directory', help='the directory to process')
 parser.add_argument('-v', '--verbose', action='store_true', help='if set, increase output verbosity')
 parser.add_argument('-d', '--delete_auth', action='store_true', help='if set, automatically delete unwanted'
-                                                                     ' files without prompt')
+                                                                         ' files without prompt')
+parser.add_argument('-s', '--enable_spotify', action='store_true', help='if set, use spotifys api to '
+                                                                            'download album art')
+
 # Assign arguments to values
 args = parser.parse_args()
 directory = args.directory
 verbose = args.verbose
 delete_auth = args.delete_auth
+enable_spotify = args.enable_spotify
 
 if verbose:
     print(args)
+
+if enable_spotify:
+    # Create spotipy credentials structs (needs SPOTIPY_CLIENT_ID & SPOTIPY_CLIENT_SECRET env variables to be set)
+    auth_manager = SpotifyClientCredentials(secrets.get('SPOTIPY_CLIENT_ID'), secrets.get('SPOTIPY_CLIENT_SECRET'))
+    sp = spotipy.Spotify(auth_manager=auth_manager)
 
 # Iterate over each sub-directory in the passed one
 for dirName in os.listdir(directory):
